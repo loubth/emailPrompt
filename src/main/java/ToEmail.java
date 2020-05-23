@@ -54,11 +54,10 @@ public class ToEmail {
     }
 
     public static void main(String[] args) throws Exception {
-        //等待网络通畅
-        ToEmail.waitToPass();
 
         //增加附加内容
         String dateString = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+        ToEmail.waitToPass();   //等待网络通畅
         String localIp = ToEmail.getLocalHostLANAddress().getHostAddress();
         String hostName = Inet4Address.getLocalHost().getHostName();
         String publicIp = null;
@@ -68,10 +67,22 @@ public class ToEmail {
                 publicIp = "未获取到值";
             }
         } catch (Throwable e) {
-            System.out.println("公网ip获取失败");
+            String exceptionMsg = "公网ip获取失败";
+            System.out.println(exceptionMsg);
+            ToEmail.writeToLog(exceptionMsg);
         }
 
-        String extraInformation = "<br><br><br>----------------------------------------------------------<br>" + "来自外网ip为 “" + publicIp + "”<br>内网ip为 “" + localIp + "”<br>主机名称为 “" + hostName + "”的计算机的信息<br><br>发送时间为 “" + dateString + "”";
+        String extraInformation =
+                "<br><br><br>----------------------------------------------------------<br>"
+                        + "发生时间为 “"
+                        + dateString + "”"
+                        + "<br><br>来自外网ip为 “"
+                        + publicIp
+                        + "”<br>内网ip为 “"
+                        + localIp
+                        + "”<br>主机名称为 “"
+                        + hostName
+                        + "”的计算机的信息";
         new ToEmail().sendEmail(ToEmail.title, ToEmail.content + extraInformation);
         System.out.println("邮件发送成功");
         ToEmail.writeToLog("邮件发送成功");
