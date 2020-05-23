@@ -24,18 +24,18 @@ public class ToEmail {
     private static String content;    //邮件文字内容
 
     static {
-        //加载配置文件
+        //加载配置文件（放在最终jar包外面）
         Properties properties = new Properties();
-        InputStream in = null;
+        Reader in = null;
         try {
-            String configPath=new File(ToEmail.class.getProtectionDomain().getCodeSource().getLocation().getPath()).getParent()+"/config.properties";
-            configPath=URLDecoder.decode(configPath, "utf-8");
-            in = new FileInputStream(configPath);
+            String configPath = new File(ToEmail.class.getProtectionDomain().getCodeSource().getLocation().getPath()).getParent() + "\\config.properties";
+            configPath = URLDecoder.decode(configPath, "utf-8");
+            in = new InputStreamReader(new FileInputStream(configPath), "utf-8");
         } catch (Throwable e) {
             e.printStackTrace();
         }
         try {
-            properties.load(new InputStreamReader(in, "utf-8"));
+            properties.load(in);
             ToEmail.fromEmailAddress = properties.getProperty("fromEmailAddress").trim();
             ToEmail.toEmailAddress = properties.getProperty("toEmailAddress").trim();
             ToEmail.server = properties.getProperty("server").trim();
@@ -44,10 +44,16 @@ public class ToEmail {
             ToEmail.content = properties.getProperty("content").trim();
         } catch (IOException e) {
             e.printStackTrace();
+        } finally {
+            try {
+                in.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
-    public static void main(String[] args) throws Throwable {
+    public static void main(String[] args) throws Exception {
         //等待网络通畅
         ToEmail.waitToPass();
 
@@ -68,6 +74,7 @@ public class ToEmail {
         String extraInformation = "<br><br><br>----------------------------------------------------------<br>" + "来自外网ip为 “" + publicIp + "”<br>内网ip为 “" + localIp + "”<br>主机名称为 “" + hostName + "”的计算机的信息<br><br>发送时间为 “" + dateString + "”";
         new ToEmail().sendEmail(ToEmail.title, ToEmail.content + extraInformation);
         System.out.println("邮件发送成功");
+        ToEmail.writeToLog("邮件发送成功");
 
     }
 
@@ -78,7 +85,9 @@ public class ToEmail {
                 InetAddress.getByName("www.baidu.com").isReachable(5000);
                 break;
             } catch (IOException e) {
-                System.out.println("请连接网络...");
+                String exceptionMsg = "网络未连接，1分钟后重试...";
+                System.out.println(exceptionMsg);
+                ToEmail.writeToLog(exceptionMsg);
                 Thread.sleep(60 * 1000);
             }
         }
@@ -101,7 +110,6 @@ public class ToEmail {
             while ((read = in.readLine()) != null) {
                 inputLine.append(read + "\r\n");
             }
-            //System.out.println(inputLine.toString());
         } catch (MalformedURLException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -122,7 +130,6 @@ public class ToEmail {
         if (m.find()) {
             String ipstr = m.group(1);
             ip = ipstr;
-            //System.out.println(ipstr);
         }
         return ip;
     }
@@ -166,7 +173,7 @@ public class ToEmail {
     }
 
     //发送邮件
-    public boolean sendEmail(String title, String content) throws MessagingException, GeneralSecurityException {
+    public boolean sendEmail(String title, String content) throws Exception {
         //创建一个配置文件并保存
         Properties properties = new Properties();
 
@@ -200,8 +207,11 @@ public class ToEmail {
         //连接服务器
         try {
             transport.connect(ToEmail.server, ToEmail.fromEmailAddress, ToEmail.AuthorizationCode);
-        } catch (Throwable e) {
-            System.out.println("无法正确连接到邮件服务器，请检查邮箱、授权码及邮箱服务器地址是否填写正确");
+        } catch (Exception e) {
+            String exceptionMsg = "无法正确连接到邮件服务器，请检查邮箱、授权码及邮箱服务器地址是否填写正确";
+            System.out.println(exceptionMsg);
+            ToEmail.writeToLog(exceptionMsg);
+            throw e;
         }
         //创建邮件对象
         MimeMessage mimeMessage = new MimeMessage(session);
@@ -219,10 +229,70 @@ public class ToEmail {
         mimeMessage.setContent(content, "text/html;charset=UTF-8");
 
         //发送邮件
-        transport.sendMessage(mimeMessage, mimeMessage.getAllRecipients());
+        try {
+            transport.sendMessage(mimeMessage, mimeMessage.getAllRecipients());
+        } catch (Exception e) {
+            String exceptionMsg = "发送邮件失败（可能被当做垃圾邮件了）";
+            System.out.println(exceptionMsg);
+            ToEmail.writeToLog(exceptionMsg);
+            throw e;
+        }
 
         //关闭连接
         transport.close();
         return true;
+    }
+
+    private static void writeToLog(String exceptionMsg) {
+        exceptionMsg = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "\t\t" + exceptionMsg;
+        String logPath = new File(ToEmail.class.getProtectionDomain().getCodeSource().getLocation().getPath()).getParent() + "\\log.txt";
+        try {
+            logPath = URLDecoder.decode(logPath, "utf-8");
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        }
+        File logFile = new File(logPath);
+        if (!logFile.exists()) {
+            try {
+                logFile.createNewFile();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        BufferedReader in = null;
+        BufferedWriter out = null;
+        try {
+
+            if (logFile.length() > 100 * 1024) {
+                logFile.delete();
+                try {
+                    logFile.createNewFile();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            in = new BufferedReader(new InputStreamReader(new FileInputStream(logFile), "utf-8"));
+            String tempString = null;
+            StringBuilder originContent = new StringBuilder();
+
+            for (int readNum = 0; (tempString = in.readLine()) != null && readNum < 399; readNum++) {
+                originContent.append(tempString);
+                originContent.append(System.getProperty("line.separator"));
+            }
+            //创建输出流会删除原文件创建同名新文件所以不要把这行放到前面否则会读不到原文件的内容
+            out = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(logFile), "utf-8"));
+
+
+            out.append(exceptionMsg + System.getProperty("line.separator") + originContent);
+
+            in.close();
+            out.close();
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 }
