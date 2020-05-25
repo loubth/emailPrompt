@@ -7,7 +7,6 @@ import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 import java.io.*;
 import java.net.*;
-import java.security.GeneralSecurityException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Enumeration;
@@ -78,7 +77,8 @@ public class ToEmail {
                         + dateString + "”"
                         + "<br><br>来自外网ip为 “"
                         + publicIp
-                        + "”<br>内网ip为 “"
+                        + "（" + ToEmail.getPublicIpRegion()
+                        + "）”<br>内网ip为 “"
                         + localIp
                         + "”<br>主机名称为 “"
                         + hostName
@@ -106,9 +106,23 @@ public class ToEmail {
 
     //获取公网ip
     public static String getPublicIp() {
-        String ip = "";
-        String chinaz = "http://ip.chinaz.com";
+        String info = ToEmail.getInfo();
+        return info.substring(0, info.indexOf("\t"));
+    }
 
+    //获取公网ip所属区域
+    public static String getPublicIpRegion() {
+        String info = ToEmail.getInfo();
+        return info.substring(info.indexOf("\t") + 1);
+    }
+
+    //获取公网ip及其所属区域
+    private static String getInfo() {
+        String ip = "";
+        String region = "";
+
+
+        String chinaz = "http://ip.chinaz.com";
         StringBuilder inputLine = new StringBuilder();
         String read = "";
         URL url = null;
@@ -139,10 +153,16 @@ public class ToEmail {
         Pattern p = Pattern.compile("\\<dd class\\=\"fz24\">(.*?)\\<\\/dd>");
         Matcher m = p.matcher(inputLine.toString());
         if (m.find()) {
-            String ipstr = m.group(1);
-            ip = ipstr;
+            ip = m.group(1);
         }
-        return ip;
+
+        p = Pattern.compile("<dt>来自</dt>\\s*?<dd>(.*?)<a href=");
+        m = p.matcher(inputLine.toString());
+        if (m.find()) {
+            region = m.group(1);
+        }
+
+        return ip + "\t" + region;
     }
 
     //获取本地ip（排除虚拟机地址影响）
