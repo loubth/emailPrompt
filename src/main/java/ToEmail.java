@@ -22,6 +22,8 @@ public class ToEmail {
     private static String title;    //邮件标题
     private static String content;    //邮件文字内容
 
+    private static String info;
+
     static {
         //加载配置文件（放在最终jar包外面）
         Properties properties = new Properties();
@@ -57,19 +59,21 @@ public class ToEmail {
         //增加附加内容
         String dateString = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
         ToEmail.waitToPass();   //等待网络通畅
+        try {
+            info = ToEmail.getInfo();
+        } catch (Exception e) {
+            System.out.println("附加消息获取失败");
+            ToEmail.writeToLog("附加消息获取失败");
+            e.printStackTrace();
+        }
         String localIp = ToEmail.getLocalHostLANAddress().getHostAddress();
         String hostName = Inet4Address.getLocalHost().getHostName();
-        String publicIp = null;
-        try {
-            publicIp = ToEmail.getPublicIp();
-            if (publicIp.trim().equals("")) {
-                publicIp = "未获取到值";
-            }
-        } catch (Throwable e) {
-            String exceptionMsg = "公网ip获取失败";
-            System.out.println(exceptionMsg);
-            ToEmail.writeToLog(exceptionMsg);
-        }
+        String publicIp = ToEmail.getPublicIp().equals("") ? "未获取到值" : ToEmail.getPublicIp();
+        String networkServiceProvider = ToEmail.getNetwordServiceProvider().equals("") ? "未获取到值" : ToEmail.getNetwordServiceProvider();
+        ;
+        String tencentPosition = ToEmail.getTencentPosition().equals("") ? "未获取到值" : ToEmail.getTencentPosition();
+        String OSName = ToEmail.getOSName().equals("") ? "未获取到值" : ToEmail.getOSName();
+
 
         String extraInformation =
                 "<br><br><br>----------------------------------------------------------<br>"
@@ -77,12 +81,18 @@ public class ToEmail {
                         + dateString + "”"
                         + "<br><br>来自外网ip为 “"
                         + publicIp
-                        + "（" + ToEmail.getPublicIpRegion()
+                        + "（" + ToEmail.getNetwordServiceProvider()
                         + "）”<br>内网ip为 “"
                         + localIp
+                        + "”<br>操作系统为“"
+                        + OSName
+                        + "”<br>腾讯定位为“"
+                        + tencentPosition
                         + "”<br>主机名称为 “"
                         + hostName
                         + "”的计算机的信息";
+
+        //发送邮件
         new ToEmail().sendEmail(ToEmail.title, ToEmail.content + extraInformation);
         System.out.println("邮件发送成功");
         ToEmail.writeToLog("邮件发送成功");
@@ -104,25 +114,71 @@ public class ToEmail {
         }
     }
 
+
     //获取公网ip
     public static String getPublicIp() {
-        String info = ToEmail.getInfo();
-        return info.substring(0, info.indexOf("\t"));
+        if (info == null) {
+            return "";
+        }
+        String[] infos = info.split("\t");
+        for (String result : infos) {
+            if (result.contains("publicIp")) {
+                return result.replace("publicIp=", "");
+            }
+        }
+        return "";
     }
 
-    //获取公网ip所属区域
-    public static String getPublicIpRegion() {
-        String info = ToEmail.getInfo();
-        return info.substring(info.indexOf("\t") + 1);
+    //获取网络服务商
+    public static String getNetwordServiceProvider() {
+        if (info == null) {
+            return "";
+        }
+        String[] infos = info.split("\t");
+        for (String result : infos) {
+            if (result.contains("networkServiceProvider")) {
+                return result.replace("networkServiceProvider=", "");
+            }
+        }
+        return "";
     }
 
-    //获取公网ip及其所属区域
-    private static String getInfo() {
+    //获取腾讯定位位置
+    public static String getTencentPosition() {
+        if (info == null) {
+            return "";
+        }
+        String[] infos = info.split("\t");
+        for (String result : infos) {
+            if (result.contains("tencentPositon")) {
+                return result.replace("tencentPositon=", "");
+            }
+        }
+        return "";
+    }
+
+    //获取操作系统名称
+    public static String getOSName() {
+        if (info == null) {
+            return "";
+        }
+        String[] infos = info.split("\t");
+        for (String result : infos) {
+            if (result.contains("OSName")) {
+                return result.replace("OSName=", "");
+            }
+        }
+        return "";
+    }
+
+    //从网站爬取信息
+    private static String getInfo() throws Exception {
         String ip = "";
         String region = "";
+        String tencentPositon = "";
+        String OSName = "";
 
-
-        String chinaz = "http://ip.chinaz.com";
+        String chinaz = "https://www.sojson.com/ip/";
         StringBuilder inputLine = new StringBuilder();
         String read = "";
         URL url = null;
@@ -131,14 +187,11 @@ public class ToEmail {
         try {
             url = new URL(chinaz);
             urlConnection = (HttpURLConnection) url.openConnection();
+            urlConnection.setRequestProperty("user-agent", " Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36");
             in = new BufferedReader(new InputStreamReader(urlConnection.getInputStream(), "UTF-8"));
             while ((read = in.readLine()) != null) {
                 inputLine.append(read + "\r\n");
             }
-        } catch (MalformedURLException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
         } finally {
             if (in != null) {
                 try {
@@ -150,19 +203,32 @@ public class ToEmail {
         }
 
 
-        Pattern p = Pattern.compile("\\<dd class\\=\"fz24\">(.*?)\\<\\/dd>");
+        Pattern p = Pattern.compile(">IP</th>\\s*.*>(.*?)</td>");
         Matcher m = p.matcher(inputLine.toString());
         if (m.find()) {
             ip = m.group(1);
         }
 
-        p = Pattern.compile("<dt>来自</dt>\\s*?<dd>(.*?)<a href=");
+        p = Pattern.compile("SOJSON.COM 定位</th>\\s*.*>(.*?)</td>");
         m = p.matcher(inputLine.toString());
         if (m.find()) {
             region = m.group(1);
         }
 
-        return ip + "\t" + region;
+        p = Pattern.compile(">腾讯定位</th>\\s*<td>\\s*(.*)\\s*.*?\\s*</td>");
+        m = p.matcher(inputLine.toString());
+        if (m.find()) {
+            tencentPositon = m.group(1);
+        }
+
+        p = Pattern.compile(">操作系统</th>\\s*.*>(.*?)</td>");
+        m = p.matcher(inputLine.toString());
+        if (m.find()) {
+            OSName = m.group(1);
+        }
+
+
+        return "publicIp=" + ip + "\t" + "networkServiceProvider=" + region + "\t" + "tencentPositon=" + tencentPositon + "\t" + "OSName=" + OSName;
     }
 
     //获取本地ip（排除虚拟机地址影响）
