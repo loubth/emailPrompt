@@ -105,7 +105,7 @@ public class ToEmail {
             try {
                 InetAddress.getByName("www.baidu.com").isReachable(5000);
                 break;
-            } catch (IOException e) {
+            } catch (Exception e) {
                 String exceptionMsg = "网络未连接，1分钟后重试...";
                 System.out.println(exceptionMsg);
                 ToEmail.writeToLog(exceptionMsg);
