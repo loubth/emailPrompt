@@ -63,6 +63,7 @@ public class ToEmail {
         //如果若干时间间隔（interval）前已经发过则不再发送
         boolean isAlreadySent = ToEmail.alreadySent(Integer.parseInt(ToEmail.interval));
         if (isAlreadySent) {
+            ToEmail.writeToLog("已经发送过了，请等待" + ToEmail.interval + "秒后再重新发送");
             return;
         }
 
