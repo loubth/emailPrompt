@@ -21,8 +21,11 @@ public class ToEmail {
     private static String AuthorizationCode;    //服务器给你的授权码
     private static String title;    //邮件标题
     private static String content;    //邮件文字内容
+    private static String lastSendTime; //上次登录时间 用于实现一段时间内只发一次邮件功能
+    private static String interval; //多次发送最短时间间隔（单位为秒） 用于实现一段时间内只发一次邮件功能
 
     private static String info;
+
 
     static {
         //加载配置文件（放在最终jar包外面）
@@ -40,9 +43,10 @@ public class ToEmail {
             ToEmail.fromEmailAddress = properties.getProperty("fromEmailAddress").trim();
             ToEmail.toEmailAddress = properties.getProperty("toEmailAddress").trim();
             ToEmail.server = properties.getProperty("server").trim();
-            ToEmail.AuthorizationCode = properties.getProperty("AuthorizationCode").trim();
+            ToEmail.AuthorizationCode = properties.getProperty("authorizationCode").trim();
             ToEmail.title = properties.getProperty("title").trim();
             ToEmail.content = properties.getProperty("content").trim();
+            ToEmail.interval = properties.getProperty("interval").trim();
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
@@ -56,7 +60,12 @@ public class ToEmail {
 
     public static void main(String[] args) throws Exception {
 
-        //增加附加内容
+        //如果若干时间间隔（interval）前已经发过则不再发送
+        boolean isAlreadySent = ToEmail.alreadySent(Integer.parseInt(ToEmail.interval));
+        if (isAlreadySent) {
+            return;
+        }
+
         String dateString = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
         ToEmail.waitToPass();   //等待网络通畅
         try {
@@ -70,11 +79,10 @@ public class ToEmail {
         String hostName = Inet4Address.getLocalHost().getHostName();
         String publicIp = ToEmail.getPublicIp().equals("") ? "未获取到值" : ToEmail.getPublicIp();
         String networkServiceProvider = ToEmail.getNetwordServiceProvider().equals("") ? "未获取到值" : ToEmail.getNetwordServiceProvider();
-        ;
         String tencentPosition = ToEmail.getTencentPosition().equals("") ? "未获取到值" : ToEmail.getTencentPosition();
         String OSName = ToEmail.getOSName().equals("") ? "未获取到值" : ToEmail.getOSName();
 
-
+        //增加附加内容
         String extraInformation =
                 "<br><br><br>----------------------------------------------------------<br>"
                         + "发生时间为 “"
@@ -340,6 +348,7 @@ public class ToEmail {
         return true;
     }
 
+    //写日志
     private static void writeToLog(String exceptionMsg) {
         exceptionMsg = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "\t\t" + exceptionMsg;
         String logPath = new File(ToEmail.class.getProtectionDomain().getCodeSource().getLocation().getPath()).getParent() + "\\log.txt";
@@ -391,5 +400,24 @@ public class ToEmail {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    //判断若干时间段内是否发送过邮件
+    private static boolean alreadySent(int interval) {
+        try {
+            String logPath = new File(ToEmail.class.getProtectionDomain().getCodeSource().getLocation().getPath()).getParent() + "\\log.txt";
+            logPath = URLDecoder.decode(logPath, "utf-8");
+            long lastSendTimeMillis = new File(logPath).lastModified(); //把日志上次的修改时间作为邮件上次发送时间
+            if (System.currentTimeMillis() - lastSendTimeMillis > interval * 1000) {
+                return false;
+            } else {
+                return true;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            ToEmail.writeToLog("上次发送时间获取失败");
+            return false;
+        }
+
     }
 }
